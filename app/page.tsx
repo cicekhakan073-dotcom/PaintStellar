@@ -19,7 +19,7 @@ const PLACE_COLORS = [
 
 const GRID_SIZE = 100; // 100x100 toplam 10.000 piksel
 const PIXEL_SIZE = 12;
-const CONTRACT_ID = "CCMXQO5ZL7IMWL46ID3PQB27ZR2G6J26O5KXOZL7HYA7WKC2SWGFIYHA";
+const CONTRACT_ID = process.env.NEXT_PUBLIC_CONTRACT_ID || "CCMXQO5ZL7IMWL46ID3PQB27ZR2G6J26O5KXOZL7HYA7WKC2SWGFIYHA";
 
 // ─── Memoized Piksel Bileşeni (Performans için kritik) ──────────────────────
 const Pixel = memo(({ x, y, color, onClick, onHover, isHovered, selectedColor }: any) => (
@@ -83,6 +83,22 @@ export default function PaintStellarPage() {
         };
     }, []);
 
+    // ── LocalStorage & Sync ──────────────────────────────────────────────────
+    React.useEffect(() => {
+        const saved = localStorage.getItem('paint_stellar_pixels');
+        if (saved) {
+            try { setPixels(JSON.parse(saved)); } catch (e) { }
+        }
+
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === 'paint_stellar_pixels' && e.newValue) {
+                try { setPixels(JSON.parse(e.newValue)); } catch (e) { }
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, []);
+
     // ── Blockchain İşlemi ─────────────────────────────────────────────────────
     const handlePixelClick = useCallback(async (x: number, y: number) => {
         if (!freighter.isConnected) {
@@ -90,8 +106,12 @@ export default function PaintStellarPage() {
             return;
         }
 
-        // Optimistic local update
-        setPixels((prev) => ({ ...prev, [`${x},${y}`]: selectedColor }));
+        // Optimistic local update and persistence
+        setPixels((prev) => {
+            const next = { ...prev, [`${x},${y}`]: selectedColor };
+            localStorage.setItem('paint_stellar_pixels', JSON.stringify(next));
+            return next;
+        });
 
         try {
             // Renk formatını u32 sayıya dönüştür (#FF0000 -> 16711680)
@@ -273,7 +293,7 @@ export default function PaintStellarPage() {
                 </aside>
 
                 {/* Sağ Alan: Terminal / Winners Paneli */}
-                <WinnersPanel getWinners={contract.getWinners} />
+                <WinnersPanel getWinners={contract.getWinners} publicKey={freighter.publicKey} />
 
             </div>
         </div>
