@@ -1,12 +1,20 @@
 'use client';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Winner } from '../hooks/useContract';
 
 type Props = {
     getWinners: () => Promise<Winner[]>;
+    publicKey?: string | null;
+};
+
+type ChatMessage = {
+    user: string;
+    text: string;
+    time: number;
 };
 
 function shortAddr(addr: string) {
+    if (!addr) return '';
     return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
@@ -15,12 +23,20 @@ function formatXLM(stroops: bigint) {
     return xlm.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-export default function WinnersPanel({ getWinners }: Props) {
+export default function WinnersPanel({ getWinners, publicKey }: Props) {
+    // Activity Tab State
     const [winners, setWinners] = useState<Winner[]>([]);
     const [loading, setLoading] = useState(true);
 
+    // Chat Tab State
+    const [activeTab, setActiveTab] = useState<'activity' | 'chat'>('activity');
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [chatInput, setChatInput] = useState('');
+    const chatEndRef = useRef<HTMLDivElement>(null);
+
+    // --- ACTIVITY LOGIC ---
     const fetchWinners = useCallback(() => {
-        setLoading(true);
+        // Only fetch if activity tab is active, or we just want to run in background
         getWinners().then((w) => {
             setWinners(w);
             setLoading(false);
@@ -36,6 +52,51 @@ export default function WinnersPanel({ getWinners }: Props) {
         return () => clearInterval(interval);
     }, [fetchWinners]);
 
+    // --- CHAT LOGIC ---
+    useEffect(() => {
+        const saved = localStorage.getItem('paint_stellar_chat');
+        if (saved) {
+            try { setChatMessages(JSON.parse(saved)); } catch (e) { }
+        }
+
+        const handleStorage = (e: StorageEvent) => {
+            if (e.key === 'paint_stellar_chat' && e.newValue) {
+                try { setChatMessages(JSON.parse(e.newValue)); } catch (e) { }
+            }
+        };
+        window.addEventListener('storage', handleStorage);
+        return () => window.removeEventListener('storage', handleStorage);
+    }, []);
+
+    useEffect(() => {
+        // Scroll to bottom when new messages arrive and chat is active
+        if (activeTab === 'chat' && chatEndRef.current) {
+            chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [chatMessages, activeTab]);
+
+    const handleSendChat = (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+            e.preventDefault(); // Varsayılan Enter hareketini (sayfa kayması vb) durdur
+
+            if (chatInput.trim() === '') return;
+
+            if (!publicKey) {
+                alert('Please connect your wallet first!');
+                return;
+            }
+            const msg: ChatMessage = {
+                user: publicKey,
+                text: chatInput.trim(),
+                time: Date.now()
+            };
+            const next = [...chatMessages, msg];
+            setChatMessages(next);
+            localStorage.setItem('paint_stellar_chat', JSON.stringify(next));
+            setChatInput('');
+        }
+    };
+
     return (
         <aside className="nb-panel" style={{
             width: '320px',
@@ -47,61 +108,131 @@ export default function WinnersPanel({ getWinners }: Props) {
             <div style={{
                 display: 'flex', borderBottom: '1px solid var(--border-color)', background: '#111218'
             }}>
-                <div style={{ padding: '12px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--border-color)', color: 'var(--text-main)' }}>Activity</div>
-                <div style={{ padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>Global Chat</div>
+                <div
+                    onClick={() => setActiveTab('activity')}
+                    style={{
+                        padding: '12px 16px', fontSize: '12px', fontWeight: 600, borderRight: '1px solid var(--border-color)',
+                        color: activeTab === 'activity' ? 'var(--text-main)' : 'var(--text-muted)',
+                        cursor: 'pointer', background: activeTab === 'activity' ? '#1b1d24' : 'transparent'
+                    }}
+                >
+                    Activity
+                </div>
+                <div
+                    onClick={() => setActiveTab('chat')}
+                    style={{
+                        padding: '12px 16px', fontSize: '12px', fontWeight: 600,
+                        color: activeTab === 'chat' ? 'var(--text-main)' : 'var(--text-muted)',
+                        cursor: 'pointer', background: activeTab === 'chat' ? '#1b1d24' : 'transparent'
+                    }}
+                >
+                    Global Chat
+                </div>
             </div>
 
             {/* List */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {loading && winners.length === 0 && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>Loading events...</div>
-                )}
-                {!loading && winners.length === 0 && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>Terminal ready. No events yet.</div>
-                )}
-                {winners.map((w, i) => {
-                    const isJackpot = w.amount > 0n;
-                    return (
-                        <div key={i} style={{ display: 'flex', gap: '12px', fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.4 }}>
-                            {/* Avatar placeholder */}
-                            <div style={{
-                                width: '28px', height: '28px', borderRadius: '4px', flexShrink: 0,
-                                background: isJackpot ? 'var(--accent-gold)' : 'var(--accent-yellow)',
-                                display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', color: '#000'
-                            }}>
-                                {isJackpot ? '🎰' : '👤'}
-                            </div>
-
-                            {/* Message Content */}
-                            <div style={{ flex: 1, background: '#1b1d24', padding: '8px 12px', borderRadius: '6px', border: '1px solid #2a2a35' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                    <span style={{ fontWeight: 700, color: isJackpot ? 'var(--accent-gold)' : 'var(--text-main)' }}>
-                                        {shortAddr(w.address)}
-                                    </span>
-                                    <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>now</span>
-                                </div>
-
-                                {isJackpot ? (
-                                    <div style={{ color: 'var(--text-main)' }}>
-                                        Won the Jackpot! <span style={{ color: 'var(--accent-gold)', fontWeight: 'bold' }}>+{formatXLM(w.amount)} XLM</span>
+                {/* ACTIVITY TAB CONTENT */}
+                {activeTab === 'activity' && (
+                    <>
+                        {loading && winners.length === 0 && (
+                            <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>Loading events...</div>
+                        )}
+                        {!loading && winners.length === 0 && (
+                            <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-mono)' }}>Terminal ready. No events yet.</div>
+                        )}
+                        {winners.map((w, i) => {
+                            const isJackpot = w.amount > 0n;
+                            return (
+                                <div key={i} style={{ display: 'flex', gap: '12px', fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.4 }}>
+                                    {/* Avatar placeholder */}
+                                    <div style={{
+                                        width: '28px', height: '28px', borderRadius: '4px', flexShrink: 0,
+                                        background: isJackpot ? 'var(--accent-gold)' : 'var(--accent-yellow)',
+                                        display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', color: '#000'
+                                    }}>
+                                        {isJackpot ? '🎰' : '👤'}
                                     </div>
-                                ) : (
-                                    <div style={{ color: 'var(--text-muted)' }}>Painted a pixel on the canvas</div>
-                                )}
+
+                                    {/* Message Content */}
+                                    <div style={{ flex: 1, background: '#1b1d24', padding: '8px 12px', borderRadius: '6px', border: '1px solid #2a2a35' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: 700, color: isJackpot ? 'var(--accent-gold)' : 'var(--text-main)' }}>
+                                                {shortAddr(w.address)}
+                                            </span>
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>now</span>
+                                        </div>
+
+                                        {isJackpot ? (
+                                            <div style={{ color: 'var(--text-main)' }}>
+                                                Won the Jackpot! <span style={{ color: 'var(--accent-gold)', fontWeight: 'bold' }}>+{formatXLM(w.amount)} XLM</span>
+                                            </div>
+                                        ) : (
+                                            <div style={{ color: 'var(--text-muted)' }}>Painted a pixel on the canvas</div>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </>
+                )}
+
+                {/* CHAT TAB CONTENT */}
+                {activeTab === 'chat' && (
+                    <>
+                        {chatMessages.length === 0 && (
+                            <div style={{ color: 'var(--text-muted)', fontSize: '12px', fontFamily: 'var(--font-mono)', textAlign: 'center', marginTop: '20px' }}>
+                                Welcome to Global Chat.
                             </div>
-                        </div>
-                    );
-                })}
+                        )}
+                        {chatMessages.map((msg, i) => {
+                            const isMe = msg.user === publicKey;
+                            return (
+                                <div key={i} style={{ display: 'flex', gap: '12px', fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.4 }}>
+                                    <div style={{
+                                        width: '28px', height: '28px', borderRadius: '4px', flexShrink: 0,
+                                        background: isMe ? 'var(--accent-yellow)' : 'var(--border-color)',
+                                        display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', color: isMe ? '#000' : 'var(--text-main)'
+                                    }}>
+                                        🗣
+                                    </div>
+                                    <div style={{ flex: 1, background: isMe ? 'rgba(250, 204, 21, 0.1)' : '#1b1d24', padding: '8px 12px', borderRadius: '6px', border: isMe ? '1px solid var(--accent-yellow-hover)' : '1px solid #2a2a35' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: 700, color: isMe ? 'var(--accent-yellow)' : 'var(--text-main)' }}>
+                                                {isMe ? 'You' : shortAddr(msg.user)}
+                                            </span>
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                                                {new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                        </div>
+                                        <div style={{ color: 'var(--text-main)', wordBreak: 'break-word' }}>
+                                            {msg.text}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div ref={chatEndRef} />
+                    </>
+                )}
             </div>
 
-            {/* Footer / Input area mockup */}
+            {/* Footer / Input area */}
             <div style={{ padding: '12px', borderTop: '1px solid var(--border-color)', background: '#111218' }}>
-                <div style={{
-                    background: '#0b0c10', border: '1px solid var(--border-color)', borderRadius: '4px',
-                    padding: '8px 12px', fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)'
-                }}>
-                    {'>'} connect terminal...
-                </div>
+                <input
+                    type="text"
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={handleSendChat}
+                    placeholder={activeTab === 'chat' ? (publicKey ? "> type a message and press Enter..." : "> connect wallet to chat...") : "> switch to Global Chat to type..."}
+                    disabled={activeTab !== 'chat'}
+                    style={{
+                        width: '100%',
+                        background: '#0b0c10', border: '1px solid var(--border-color)', borderRadius: '4px',
+                        padding: '10px 12px', fontSize: '11px', color: 'var(--text-main)', fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                    }}
+                />
             </div>
         </aside>
     );
