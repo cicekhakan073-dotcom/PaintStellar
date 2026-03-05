@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic';
 import { useFreighter } from './hooks/useFreighter';
 import { useContract } from './hooks/useContract';
 import { supabase } from '../utils/supabase';
+import { archiveEpoch } from '../utils/archiveEpoch';
 
 const WinnersPanel = dynamic(() => import('./components/WinnersPanel'), { ssr: false });
 
@@ -85,19 +86,42 @@ export default function PaintStellarPage() {
         };
     }, []);
 
-    // ── Epoch Countdown ──────────────────────────────────────────────────────────────
+    // ── Epoch Countdown & Auto-Archive ──────────────────────────────────────
+    const epochArchivedRef = React.useRef<number>(-1);
+
     React.useEffect(() => {
         const fetchAndTick = async () => {
             const secsLeft = await contract.getEpochEnd();
             setEpochSecsLeft(secsLeft);
         };
         fetchAndTick();
-        // Countdown timer
-        const timer = setInterval(() => {
-            setEpochSecsLeft((s) => (s !== null && s > 0 ? s - 1 : s));
+        const timer = setInterval(async () => {
+            setEpochSecsLeft((s) => {
+                if (s !== null && s > 0) return s - 1;
+                return s;
+            });
         }, 1000);
         return () => clearInterval(timer);
     }, [contract.getEpochEnd]);
+
+    // Trigger archive when epoch hits 0
+    React.useEffect(() => {
+        if (epochSecsLeft !== 0 || epochSecsLeft === null) return;
+        const runArchive = async () => {
+            // Get current epoch from contract to use as archive ID
+            try {
+                const epochId = Date.now(); // fallback: use timestamp as unique ID
+                if (epochArchivedRef.current === epochId) return;
+                epochArchivedRef.current = epochId;
+                await archiveEpoch(epochId);
+                // Refresh pixels (canvas was cleared)
+                setPixels({});
+            } catch (e) {
+                console.error('[Epoch] Archive failed:', e);
+            }
+        };
+        runArchive();
+    }, [epochSecsLeft]);
 
     // ── Supabase & Sync ──────────────────────────────────────────────────────
     React.useEffect(() => {
