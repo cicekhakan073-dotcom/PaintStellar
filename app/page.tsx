@@ -3,6 +3,7 @@ import React, { useState, useCallback, useRef, memo } from 'react';
 import dynamic from 'next/dynamic';
 import { useFreighter } from './hooks/useFreighter';
 import { useContract } from './hooks/useContract';
+import { supabase } from '../utils/supabase';
 
 const WinnersPanel = dynamic(() => import('./components/WinnersPanel'), { ssr: false });
 
@@ -83,20 +84,40 @@ export default function PaintStellarPage() {
         };
     }, []);
 
-    // ── LocalStorage & Sync ──────────────────────────────────────────────────
+    // ── Supabase & Sync ──────────────────────────────────────────────────────
     React.useEffect(() => {
-        const saved = localStorage.getItem('paint_stellar_pixels');
-        if (saved) {
-            try { setPixels(JSON.parse(saved)); } catch (e) { }
-        }
-
-        const handleStorage = (e: StorageEvent) => {
-            if (e.key === 'paint_stellar_pixels' && e.newValue) {
-                try { setPixels(JSON.parse(e.newValue)); } catch (e) { }
+        // İlk yüklemede tüm pikselleri çek
+        const fetchPixels = async () => {
+            const { data, error } = await supabase.from('pixels').select('*');
+            if (data && !error) {
+                const loadedPixels: Record<string, string> = {};
+                data.forEach((p) => {
+                    loadedPixels[p.id] = p.color;
+                });
+                setPixels(loadedPixels);
             }
         };
-        window.addEventListener('storage', handleStorage);
-        return () => window.removeEventListener('storage', handleStorage);
+        fetchPixels();
+
+        // Realtime abonelik
+        const channel = supabase
+            .channel('public:pixels')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'pixels' },
+                (payload) => {
+                    // Update the local pixel state immediately when someone else changes it
+                    if (payload.new && 'id' in payload.new && 'color' in payload.new) {
+                        const newPixel = payload.new as { id: string, color: string };
+                        setPixels((prev) => ({ ...prev, [newPixel.id]: newPixel.color }));
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     // ── Blockchain İşlemi ─────────────────────────────────────────────────────
@@ -106,12 +127,8 @@ export default function PaintStellarPage() {
             return;
         }
 
-        // Optimistic local update and persistence
-        setPixels((prev) => {
-            const next = { ...prev, [`${x},${y}`]: selectedColor };
-            localStorage.setItem('paint_stellar_pixels', JSON.stringify(next));
-            return next;
-        });
+        // Optimistic local update
+        setPixels((prev) => ({ ...prev, [`${x},${y}`]: selectedColor }));
 
         try {
             // Renk formatını u32 sayıya dönüştür (#FF0000 -> 16711680)
@@ -121,8 +138,16 @@ export default function PaintStellarPage() {
             // Kontrat çağrısı
             await contract.paintPixel(freighter.publicKey!, x, y, colorU32);
 
+            // Başarılı olursa Supabase veritabanına da kaydet (upsert x,y => color)
+            await supabase.from('pixels').upsert({
+                id: `${x},${y}`,
+                color: selectedColor,
+                updated_at: new Date().toISOString()
+            });
+
         } catch (err) {
             console.error("Boyama hatası:", err);
+            // Hata olursa optimistic update'i geri al (Opsiyonel olarak state'den çekilebilir)
         }
     }, [freighter, contract, selectedColor]);
 

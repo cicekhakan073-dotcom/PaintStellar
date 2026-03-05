@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Winner } from '../hooks/useContract';
+import { supabase } from '../../utils/supabase';
 
 type Props = {
     getWinners: () => Promise<Winner[]>;
@@ -54,18 +55,47 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
 
     // --- CHAT LOGIC ---
     useEffect(() => {
-        const saved = localStorage.getItem('paint_stellar_chat');
-        if (saved) {
-            try { setChatMessages(JSON.parse(saved)); } catch (e) { }
-        }
-
-        const handleStorage = (e: StorageEvent) => {
-            if (e.key === 'paint_stellar_chat' && e.newValue) {
-                try { setChatMessages(JSON.parse(e.newValue)); } catch (e) { }
+        // İlk yüklemede eski mesajları çek
+        const fetchMessages = async () => {
+            const { data, error } = await supabase
+                .from('chat_messages')
+                .select('*')
+                .order('created_at', { ascending: true })
+                .limit(50); // Son 50 mesaj
+            if (data && !error) {
+                const loaded = data.map((m: any) => ({
+                    user: m.user_address,
+                    text: m.text,
+                    time: new Date(m.created_at).getTime()
+                }));
+                setChatMessages(loaded);
             }
         };
-        window.addEventListener('storage', handleStorage);
-        return () => window.removeEventListener('storage', handleStorage);
+        fetchMessages();
+
+        // Realtime abonelik
+        const channel = supabase
+            .channel('public:chat_messages')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+                (payload) => {
+                    if (payload.new) {
+                        const m = payload.new as any;
+                        const newMsg: ChatMessage = {
+                            user: m.user_address,
+                            text: m.text,
+                            time: new Date(m.created_at).getTime()
+                        };
+                        setChatMessages((prev) => [...prev, newMsg]);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, []);
 
     useEffect(() => {
@@ -75,7 +105,7 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
         }
     }, [chatMessages, activeTab]);
 
-    const handleSendChat = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const handleSendChat = async (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter') {
             e.preventDefault(); // Varsayılan Enter hareketini (sayfa kayması vb) durdur
 
@@ -85,15 +115,15 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
                 alert('Please connect your wallet first!');
                 return;
             }
-            const msg: ChatMessage = {
-                user: publicKey,
-                text: chatInput.trim(),
-                time: Date.now()
-            };
-            const next = [...chatMessages, msg];
-            setChatMessages(next);
-            localStorage.setItem('paint_stellar_chat', JSON.stringify(next));
-            setChatInput('');
+
+            // Supabase'e yaz
+            const textToSend = chatInput.trim();
+            setChatInput(''); // UI'yı anında temizle
+
+            await supabase.from('chat_messages').insert({
+                user_address: publicKey,
+                text: textToSend
+            });
         }
     };
 
