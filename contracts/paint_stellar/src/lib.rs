@@ -15,7 +15,7 @@ const COOLDOWN_SECS: u64 = 600;      // 10 Dakika hız sınırı
 const EPOCH_SECS: u64 = 432_000;     // 5 Günlük tuval ömrü
 
 // ⚠️ KRİTİK: Buraya kendi ana cüzdan adresinizi yapıştırın lordum
-const TREASURY_ADDR: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"; 
+const TREASURY_ADDR: &str = "GAW7MDA3F6QOPL526FEQ65F4VDZPK4N6KPYFL2AP34XY6VE5Y7PLGQOM";
 
 // ─── Depolama Anahtarları ──────────────────────────────────────────────────
 fn winners_key() -> Symbol { symbol_short!("WINNERS") }
