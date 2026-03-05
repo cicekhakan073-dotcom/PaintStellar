@@ -37,12 +37,13 @@ export function useContract() {
     const [txStatus, setTxStatus] = useState<TxStatus>('idle');
     const [txError, setTxError] = useState<string | null>(null);
 
-    // ── F6: Pre-flight Balance Validation ────────────────────────────────────
+    // ── F6: Pre-flight Balance Validation (uses Horizon, not Soroban RPC) ───
     const checkBalance = useCallback(async (publicKey: string): Promise<void> => {
-        const server = new StellarRpc.Server(RPC_URL);
-        const accountData = await server.getAccount(publicKey);
-        const balances: any[] = (accountData as any).balances ?? [];
-        const nativeBalance = balances.find((b: any) => b.asset_type === 'native');
+        const horizonUrl = 'https://horizon-testnet.stellar.org';
+        const response = await fetch(`${horizonUrl}/accounts/${publicKey}`);
+        if (!response.ok) return; // account not found – let the TX fail naturally
+        const accountData = await response.json();
+        const nativeBalance = (accountData.balances ?? []).find((b: any) => b.asset_type === 'native');
         const balanceStroops = Math.round(parseFloat(nativeBalance?.balance ?? '0') * 10_000_000);
         if (balanceStroops < MIN_BALANCE_STROOPS) {
             throw new Error(
