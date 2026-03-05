@@ -54,7 +54,8 @@ export default function PaintStellarPage() {
     const [hoveredPixel, setHoveredPixel] = useState<{ x: number; y: number } | null>(null);
     const [zoom, setZoom] = useState(1);
     const [offset, setOffset] = useState({ x: 0, y: 0 });
-    const [spaceActive, setSpaceActive] = useState(false); // Space basılı mı?
+    const [spaceActive, setSpaceActive] = useState(false);
+    const [epochSecsLeft, setEpochSecsLeft] = useState<number | null>(null);
 
     const isPanning = useRef(false);
     const panStartRef = useRef({ x: 0, y: 0 });
@@ -83,6 +84,20 @@ export default function PaintStellarPage() {
             window.removeEventListener('keyup', onKeyUp);
         };
     }, []);
+
+    // ── Epoch Countdown ──────────────────────────────────────────────────────────────
+    React.useEffect(() => {
+        const fetchAndTick = async () => {
+            const secsLeft = await contract.getEpochEnd();
+            setEpochSecsLeft(secsLeft);
+        };
+        fetchAndTick();
+        // Countdown timer
+        const timer = setInterval(() => {
+            setEpochSecsLeft((s) => (s !== null && s > 0 ? s - 1 : s));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [contract.getEpochEnd]);
 
     // ── Supabase & Sync ──────────────────────────────────────────────────────
     React.useEffect(() => {
@@ -151,6 +166,9 @@ export default function PaintStellarPage() {
         }
     }, [freighter, contract, selectedColor]);
 
+    // F5: Is transaction locked?
+    const isTxLocked = contract.txStatus === 'signing' || contract.txStatus === 'sending' || contract.txStatus === 'building';
+
     // ── Navigasyon Kontrolleri (Pan & Zoom) ─────────────────────────────────
     const handleWheel = (e: React.WheelEvent) => {
         setZoom((z) => Math.min(4, Math.max(0.4, z - e.deltaY * 0.001)));
@@ -187,6 +205,11 @@ export default function PaintStellarPage() {
                     </div>
                     <div style={{ height: '24px', width: '1px', background: 'var(--border-color)' }}></div>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>0.5 XLM PER PIXEL · 10% JACKPOT CHANCE</div>
+                    {epochSecsLeft !== null && epochSecsLeft > 0 && (
+                        <div style={{ fontSize: '11px', background: '#1b1d24', border: '1px solid var(--border-color)', padding: '4px 10px', borderRadius: '4px', fontFamily: 'var(--font-mono)', color: 'var(--accent-yellow)' }}>
+                            ⏳ EPOCH: {Math.floor(epochSecsLeft / 86400)}d {Math.floor((epochSecsLeft % 86400) / 3600)}h {Math.floor((epochSecsLeft % 3600) / 60)}m {epochSecsLeft % 60}s
+                        </div>
+                    )}
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
@@ -240,6 +263,24 @@ export default function PaintStellarPage() {
                         </div>
                     )}
 
+                    {/* F5: Transaction Lock Overlay */}
+                    {isTxLocked && (
+                        <div style={{
+                            position: 'absolute', inset: 0, zIndex: 200,
+                            background: 'rgba(0,0,0,0.65)',
+                            display: 'flex', flexDirection: 'column',
+                            justifyContent: 'center', alignItems: 'center', gap: '16px',
+                            cursor: 'not-allowed', backdropFilter: 'blur(2px)'
+                        }}>
+                            <div style={{ fontSize: '32px' }}>⏳</div>
+                            <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent-yellow)', fontWeight: 700, fontSize: '14px' }}>
+                                {contract.txStatus === 'building' && 'BUILDING TRANSACTION...'}
+                                {contract.txStatus === 'signing' && 'WAITING FOR WALLET SIGNATURE...'}
+                                {contract.txStatus === 'sending' && 'BROADCASTING TO STELLAR NETWORK...'}
+                            </div>
+                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Canvas locked during transaction</div>
+                        </div>
+                    )}
 
                     <div style={{
                         transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
@@ -257,7 +298,7 @@ export default function PaintStellarPage() {
                                 <Pixel
                                     key={i} x={x} y={y} color={pixels[key] || '#FFFFFF'}
                                     selectedColor={selectedColor} isHovered={hoveredPixel?.x === x && hoveredPixel?.y === y}
-                                    onClick={handlePixelClick} onHover={setHoveredPixel}
+                                    onClick={isTxLocked ? () => { } : handlePixelClick} onHover={setHoveredPixel}
                                 />
                             );
                         })}
@@ -320,7 +361,7 @@ export default function PaintStellarPage() {
                 {/* Sağ Alan: Terminal / Winners Paneli */}
                 <WinnersPanel getWinners={contract.getWinners} publicKey={freighter.publicKey} />
 
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
