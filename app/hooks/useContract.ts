@@ -154,6 +154,9 @@ export function useContract() {
 
             setTxError(errMsg);
             setTxStatus('error');
+            setTimeout(() => setTxStatus('idle'), 5000); // F5: Gracefully exit error state
+            
+            throw new Error(errMsg); // Rethrow to inform page.tsx to abort DB write
         }
     }, [checkBalance]);
 

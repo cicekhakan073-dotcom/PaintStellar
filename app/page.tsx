@@ -58,6 +58,23 @@ export default function PaintStellarPage() {
     const [offset, setOffset] = useState({ x: 0, y: 0 });
     const [spaceActive, setSpaceActive] = useState(false);
     const [epochSecsLeft, setEpochSecsLeft] = useState<number | null>(null);
+    const [userCooldown, setUserCooldown] = useState<number>(0);
+
+    // ── F1: User Rate Limiting (Cooldown) ───────────────────────────────────
+    React.useEffect(() => {
+        if (freighter.isConnected && freighter.publicKey) {
+            contract.getCooldownUser(freighter.publicKey).then(setUserCooldown);
+        } else {
+            setUserCooldown(0);
+        }
+    }, [freighter.isConnected, freighter.publicKey, contract]);
+
+    React.useEffect(() => {
+        const timer = setInterval(() => {
+            setUserCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
 
     const isPanning = useRef(false);
     const panStartRef = useRef({ x: 0, y: 0 });
@@ -128,7 +145,8 @@ export default function PaintStellarPage() {
     React.useEffect(() => {
         // İlk yüklemede tüm pikselleri çek
         const fetchPixels = async () => {
-            const { data, error } = await supabase.from('pixels').select('*');
+            // F4: Persistence Hydration (Force 10000 limit instead of Supabase's default 1000)
+            const { data, error } = await supabase.from('pixels').select('id, color').limit(10000);
             if (data && !error) {
                 const loadedPixels: Record<string, string> = {};
                 data.forEach((p) => {
@@ -167,29 +185,34 @@ export default function PaintStellarPage() {
             return;
         }
 
-        // Optimistic local update
-        setPixels((prev) => ({ ...prev, [`${x},${y}`]: selectedColor }));
+        if (userCooldown > 0) return; // F1: Reject interaction if cooldown is active
+        if (contract.txStatus === 'building' || contract.txStatus === 'signing' || contract.txStatus === 'sending') return;
 
         try {
-            // Renk formatını u32 sayıya dönüştür (#FF0000 -> 16711680)
             const colorU32 = parseInt(selectedColor.replace('#', ''), 16);
             if (isNaN(colorU32)) throw new Error("Geçersiz renk");
 
-            // Kontrat çağrısı
+            // F2: Strict Transaction Flow (Wait for Network Success before ANY UI update)
             await contract.paintPixel(freighter.publicKey!, x, y, colorU32);
 
-            // Başarılı olursa Supabase veritabanına da kaydet (upsert x,y => color)
+            // F3: Sequential Database Write (Run ONLY if the contract succeeded)
             await supabase.from('pixels').upsert({
                 id: `${x},${y}`,
                 color: selectedColor,
                 updated_at: new Date().toISOString()
             });
 
+            // F2: UI Hydration from Local Execution (After verification)
+            setPixels((prev) => ({ ...prev, [`${x},${y}`]: selectedColor }));
+
+            // Reset local cooldown timer to 10 minutes (600 seconds) to lock UI
+            setUserCooldown(600);
+
         } catch (err) {
+            // F5: Fallback is handled silently (useContract gracefully unlocks the screen)
             console.error("Boyama hatası:", err);
-            // Hata olursa optimistic update'i geri al (Opsiyonel olarak state'den çekilebilir)
         }
-    }, [freighter, contract, selectedColor]);
+    }, [freighter, contract, selectedColor, userCooldown]);
 
     // F5: Is transaction locked?
     const isTxLocked = contract.txStatus === 'signing' || contract.txStatus === 'sending' || contract.txStatus === 'building';
@@ -304,6 +327,18 @@ export default function PaintStellarPage() {
                                 {contract.txStatus === 'sending' && 'BROADCASTING TO STELLAR NETWORK...'}
                             </div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>Canvas locked during transaction</div>
+                        </div>
+                    )}
+
+                    {/* F1: Cooldown Overlay Timer in UI */}
+                    {userCooldown > 0 && !isTxLocked && (
+                        <div style={{
+                            position: 'absolute', top: '70px', left: '50%', transform: 'translateX(-50%)', zIndex: 150,
+                            pointerEvents: 'none'
+                        }}>
+                             <div className="nb-panel" style={{ padding: '8px 16px', background: 'rgba(0,0,0,0.8)', border: '1px solid var(--border-color)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', color: '#facc15' }}>
+                                 ⏳ <span style={{ fontWeight: 600 }}>Cooldown Active:</span> {Math.floor(userCooldown / 60)}m {userCooldown % 60}s
+                             </div>
                         </div>
                     )}
 
