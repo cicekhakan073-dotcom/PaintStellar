@@ -96,8 +96,8 @@ export async function archiveEpoch(epochId: number): Promise<void> {
             }
         }
 
-        // 6. Clear the pixels table for the new epoch
-        await supabase.from('pixels').delete().neq('id', ''); 
+        // 6. Clear the pixels table for the new epoch (PostgREST requires a proper filter for DELETE)
+        await supabase.from('pixels').delete().not('id', 'is', null); 
 
         console.log(`[Archive] ✅ Epoch ${epochId} archived successfully!`);
     } catch (err) {
