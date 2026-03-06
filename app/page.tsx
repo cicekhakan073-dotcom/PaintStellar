@@ -147,39 +147,71 @@ export default function PaintStellarPage() {
         runArchive();
     }, [epochSecsLeft]);
 
-    // ── Supabase & Sync ──────────────────────────────────────────────────────
+    // ── Supabase & Sync (Single Source of Truth) ─────────────────────────────
     React.useEffect(() => {
-        // İlk yüklemede tüm pikselleri çek
+        let isMounted = true;
+
         const fetchPixels = async () => {
-            // F4: Persistence Hydration (Force 10000 limit instead of Supabase's default 1000)
-            const { data, error } = await supabase.from('pixels').select('id, color').limit(10000);
-            if (data && !error) {
-                const loadedPixels: Record<string, string> = {};
-                data.forEach((p) => {
-                    loadedPixels[p.id] = p.color;
-                });
-                setPixels(loadedPixels);
+            try {
+                // F4: Fetch up to 10k pixels explicitly. 
+                const { data, error } = await supabase
+                    .from('pixels')
+                    .select('id, color')
+                    .limit(10000);
+
+                if (error) throw error;
+
+                if (data && isMounted) {
+                    const loadedPixels: Record<string, string> = {};
+                    data.forEach((p) => {
+                        if (p.id && p.color) {
+                            loadedPixels[p.id] = p.color;
+                        }
+                    });
+                    setPixels(loadedPixels);
+                }
+            } catch (err) {
+                console.error('[Sync] Failed to fetch initial pixels:', err);
             }
         };
+
+        // Initial hydration
         fetchPixels();
 
-        // Realtime abonelik
+        // Realtime Subscription
         const channel = supabase
             .channel('public:pixels')
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'pixels' },
                 (payload) => {
-                    // Update the local pixel state immediately when someone else changes it
-                    if (payload.new && 'id' in payload.new && 'color' in payload.new) {
+                    if (!isMounted) return;
+                    
+                    if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
                         const newPixel = payload.new as { id: string, color: string };
-                        setPixels((prev) => ({ ...prev, [newPixel.id]: newPixel.color }));
+                        if (newPixel && newPixel.id && newPixel.color) {
+                            setPixels((prev) => ({ ...prev, [newPixel.id]: newPixel.color }));
+                        }
+                    } else if (payload.eventType === 'DELETE') {
+                        // Handle canvas clears (Epoch resets)
+                        setPixels({});
                     }
                 }
             )
-            .subscribe();
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    console.log('[Sync] Realtime connected.');
+                } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                    console.warn('[Sync] Realtime disconnected, attempting to reconnect...');
+                    // Add automatic reconnection or re-fetch logic if needed
+                    setTimeout(() => {
+                        if (isMounted) fetchPixels(); // Re-sync local state on drop
+                    }, 5000);
+                }
+            });
 
         return () => {
+            isMounted = false;
             supabase.removeChannel(channel);
         };
     }, []);
