@@ -290,7 +290,7 @@ export default function PaintStellarPage() {
                         <div style={{ fontSize: '20px', fontWeight: 900, letterSpacing: '-0.5px' }}>PAINT<span style={{ color: 'var(--accent-yellow)' }}>STELLAR</span></div>
                     </div>
                     <div style={{ height: '24px', width: '1px', background: 'var(--border-color)' }}></div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>0.5 XLM PER PIXEL · 10% JACKPOT CHANCE</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>0.5 XLM PER PIXEL {/* · 10% JACKPOT CHANCE */}</div>
                     {epochSecsLeft !== null && epochSecsLeft > 0 && (
                         <div style={{ fontSize: '11px', background: '#1b1d24', border: '1px solid var(--border-color)', padding: '4px 10px', borderRadius: '4px', fontFamily: 'var(--font-mono)', color: 'var(--accent-yellow)' }}>
                             ⏳ EPOCH: {Math.floor(epochSecsLeft / 86400)}d {Math.floor((epochSecsLeft % 86400) / 3600)}h {Math.floor((epochSecsLeft % 3600) / 60)}m {epochSecsLeft % 60}s
@@ -300,7 +300,7 @@ export default function PaintStellarPage() {
 
                 <div style={{ display: 'flex', gap: '12px' }}>
                     <Link href="/gallery"><button className="nb-button">GALLERY</button></Link>
-                    <button className="nb-button">VOTE</button>
+                    {/* <button className="nb-button">VOTE</button> */}
                     <button
                         className="nb-button nb-button-primary"
                         onClick={freighter.isConnected ? freighter.disconnect : freighter.connect}

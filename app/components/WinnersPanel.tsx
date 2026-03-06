@@ -173,26 +173,34 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
                         )}
                         {winners.map((w, i) => {
                             const isJackpot = w.amount > 0n;
+
+                            // To RESTORE jackpot functionality, remove this if statement.
+                            // We are skipping any event that has an amount > 0 (A jackpot win)
+                            if (isJackpot) return null;
+
                             return (
                                 <div key={i} style={{ display: 'flex', gap: '12px', fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.4 }}>
                                     {/* Avatar placeholder */}
                                     <div style={{
                                         width: '28px', height: '28px', borderRadius: '4px', flexShrink: 0,
-                                        background: isJackpot ? 'var(--accent-gold)' : 'var(--accent-yellow)',
+                                        background: 'var(--accent-yellow)', // Restored: background: isJackpot ? 'var(--accent-gold)' : 'var(--accent-yellow)',
                                         display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold', color: '#000'
                                     }}>
-                                        {isJackpot ? '🎰' : '👤'}
+                                        👤 {/* Restored: {isJackpot ? '🎰' : '👤'} */}
                                     </div>
 
                                     {/* Message Content */}
                                     <div style={{ flex: 1, background: '#1b1d24', padding: '8px 12px', borderRadius: '6px', border: '1px solid #2a2a35' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                                            <span style={{ fontWeight: 700, color: isJackpot ? 'var(--accent-gold)' : 'var(--text-main)' }}>
+                                            <span style={{ fontWeight: 700, color: 'var(--text-main)' }}> {/* Restored: color: isJackpot ? 'var(--accent-gold)' : 'var(--text-main)' */}
                                                 {shortAddr(w.address)}
                                             </span>
                                             <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>now</span>
                                         </div>
 
+                                        <div style={{ color: 'var(--text-muted)' }}>Painted a pixel on the canvas</div>
+                                        
+                                        {/* To RESTORE jackpot functionality, uncomment this block instead of the strict 'Painted a pixel' above:
                                         {isJackpot ? (
                                             <div style={{ color: 'var(--text-main)' }}>
                                                 Won the Jackpot! <span style={{ color: 'var(--accent-gold)', fontWeight: 'bold' }}>+{formatXLM(w.amount)} XLM</span>
@@ -200,6 +208,7 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
                                         ) : (
                                             <div style={{ color: 'var(--text-muted)' }}>Painted a pixel on the canvas</div>
                                         )}
+                                        */}
                                     </div>
                                 </div>
                             );
