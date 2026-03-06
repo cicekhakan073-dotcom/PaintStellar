@@ -95,7 +95,16 @@ export function useContract() {
 
             const simulated = await server.simulateTransaction(tx);
             if (StellarRpc.Api.isSimulationError(simulated)) {
-                throw new Error('Simülasyon hatası: ' + (simulated.error ?? JSON.stringify(simulated)));
+                // Hatanın detayını string'den çekip formatla
+                const rawError = simulated.error || JSON.stringify(simulated);
+                
+                // Rust panic/trap mesajlarını ayıkla (Örn: "HostError: Error(WasmVm, InvalidAction)")
+                let readableError = "İşlem simülasyonda reddedildi.";
+                if (rawError.includes("10 minutes")) readableError = "Bekleme süresi dolmadı. Her 10 dakikada 1 piksel boyayabilirsiniz.";
+                else if (rawError.includes("HostError") || rawError.includes("Error(WasmVm")) readableError = "Sözleşme işlemi reddetti (Büyük ihtimalle bekleme süresi, bakiye veya Epoch hatası).";
+                else readableError = `Simülasyon Hatası: ${rawError.slice(0, 50)}...`;
+
+                throw new Error(readableError);
             }
 
             const prepared = StellarRpc.assembleTransaction(tx, simulated).build();
@@ -122,7 +131,16 @@ export function useContract() {
             setTxStatus('success');
             setTimeout(() => setTxStatus('idle'), 3000);
         } catch (err: any) {
-            setTxError(err.message || 'Bilinmeyen hata');
+            console.error("TX Error:", err);
+            
+            let errMsg = err.message || 'Bilinmeyen ağ hatası';
+            
+            // Eğer User rejected ise daha kısa yaz
+            if (errMsg.includes("User declined") || errMsg.includes("User rejected")) {
+                 errMsg = "İşlem cüzdandan reddedildi.";
+            }
+
+            setTxError(errMsg);
             setTxStatus('error');
         }
     }, [checkBalance]);
