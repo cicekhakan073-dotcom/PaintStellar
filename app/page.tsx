@@ -361,7 +361,7 @@ export default function PaintStellarPage() {
                             <span>
                                 <a href="#" onClick={(e) => { e.preventDefault(); freighter.connect(); }} style={{ color: '#fff', textDecoration: 'underline', textUnderlineOffset: '2px' }}>
                                     Connect Wallet
-                                </a> & Mint a Brush to save your art to the canvas
+                                </a> to start painting on the decentralized canvas
                             </span>
                             <span style={{ color: '#facc15' }}>⚠️</span>
                         </div>
