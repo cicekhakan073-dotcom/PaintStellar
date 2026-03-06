@@ -39,7 +39,7 @@ export async function archiveEpoch(epochId: number): Promise<void> {
         }
 
         const stats: Record<string, number> = {};
-        pixels.forEach((p) => {
+        pixels.forEach((p: any) => {
             // Because original implementation doesn't store owner, we use a fallback for the demo
             // In a real app, `page.tsx` should store `owner` on UPSERT
             const pseudoOwner = p.owner || 'G_UNKNOWN_ARTIST';
@@ -55,25 +55,31 @@ export async function archiveEpoch(epochId: number): Promise<void> {
 
         console.log(`[Archive] MVP: ${mvpAddress} (${stats[mvpAddress] || 0} pixels)`);
 
+        // Ensure epoch_id fits in PostgreSQL 32-bit integer (max 2.14B)
+        // Date.now() is ~1.7 Trillion, so we convert it to seconds
+        const safeEpochId = epochId > 2147483647 ? Math.floor(epochId / 1000) : epochId;
+
         // 4. Save snapshot to epoch_archives
         const { error: archiveError } = await supabase
             .from('epoch_archives')
             .insert({
-                epoch_id: Math.floor(epochId), // Ensure it's an integer
+                epoch_id: safeEpochId,
                 canvas_data: pixels,
                 total_pixels: pixels.length,
                 mvp_address: mvpAddress
             });
 
         if (archiveError) {
-             console.error('[Archive] Failed to save archive schema:', archiveError);
+             const errorDetail = archiveError.message || JSON.stringify(archiveError);
+             console.error('[Archive] Failed to save archive schema:', errorDetail);
+             // Return early to prevent token distribution if archive fails
              return;
         }
 
         // 5. NFT Ödüllerini Dağıt
         if (uniqueAddresses.length > 0) {
             const rewardRecords = uniqueAddresses.map(address => ({
-                epoch_id: Math.floor(epochId),
+                epoch_id: safeEpochId,
                 user_address: address,
                 reward_type: address === mvpAddress ? 'MVP' : 'SOUVENIR',
                 pixel_count: stats[address],
@@ -85,7 +91,8 @@ export async function archiveEpoch(epochId: number): Promise<void> {
                 .insert(rewardRecords);
 
             if (rewardError) {
-                console.error('[Archive] Failed to save rewards:', rewardError);
+                const rErrorDetail = rewardError.message || JSON.stringify(rewardError);
+                console.error('[Archive] Failed to save rewards:', rErrorDetail);
             }
         }
 

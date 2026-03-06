@@ -95,14 +95,26 @@ export function useContract() {
 
             const simulated = await server.simulateTransaction(tx);
             if (StellarRpc.Api.isSimulationError(simulated)) {
-                // Hatanın detayını string'den çekip formatla
                 const rawError = simulated.error || JSON.stringify(simulated);
                 
-                // Rust panic/trap mesajlarını ayıkla (Örn: "HostError: Error(WasmVm, InvalidAction)")
-                let readableError = "İşlem simülasyonda reddedildi.";
-                if (rawError.includes("10 minutes")) readableError = "Bekleme süresi dolmadı. Her 10 dakikada 1 piksel boyayabilirsiniz.";
-                else if (rawError.includes("HostError") || rawError.includes("Error(WasmVm")) readableError = "Sözleşme işlemi reddetti (Büyük ihtimalle bekleme süresi, bakiye veya Epoch hatası).";
-                else readableError = `Simülasyon Hatası: ${rawError.slice(0, 50)}...`;
+                let readableError = "Transaction rejected by the network.";
+                
+                // 1. Check for Cooldown
+                if (rawError.includes("10 minutes") || rawError.includes("cooldown")) {
+                    readableError = "Cooldown active. You must wait 10 minutes between painting pixels.";
+                } 
+                // 2. Check for Epoch End (Mismatch)
+                else if (rawError.includes("epoch") || rawError.includes("expired")) {
+                    readableError = "Epoch Error: The current 5-day canvas duration has ended. The canvas is locked while archiving.";
+                } 
+                // 3. Balance and Compute/Gas Trap
+                else if (rawError.includes("HostError") || rawError.includes("Error(WasmVm")) {
+                    readableError = "Contract State Rejection: Verify you have enough XLM for gas (>1.5 XLM) and are not on a cooldown.";
+                } 
+                // 4. Default wrapper
+                else {
+                    readableError = `Simulation Failed: ${rawError.slice(0, 100)}...`;
+                }
 
                 throw new Error(readableError);
             }
