@@ -14,7 +14,7 @@ import {
 // ─── Sabitler ────────────────────────────────────────────────────────────────
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://soroban-testnet.stellar.org';
 const NETWORK_PASS = process.env.NEXT_PUBLIC_NETWORK_PASS || Networks.TESTNET;
-const CONTRACT_ID = process.env.NEXT_PUBLIC_CONTRACT_ID || 'CCMXQO5ZL7IMWL46ID3PQB27ZR2G6J26O5KXOZL7HYA7WKC2SWGFIYHA';
+const CONTRACT_ID = process.env.NEXT_PUBLIC_CONTRACT_ID || 'CBLJTDO3XOQXPUQ7T4YP4PDBZXE7A2FOBAYU5KGSADP67Y5OA6I3A5ZO';
 const MIN_BALANCE_STROOPS = 1_500_000; // 1.5 XLM minimum (1 XLM fee + 0.5 buffer)
 const DUMMY_KEY = 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN';
 
