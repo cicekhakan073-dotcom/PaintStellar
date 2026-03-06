@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useCallback, useRef, memo } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useFreighter } from './hooks/useFreighter';
 import { useContract } from './hooks/useContract';
 import { supabase } from '../utils/supabase';
@@ -237,7 +238,7 @@ export default function PaintStellarPage() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
-                    <button className="nb-button">GALLERY</button>
+                    <Link href="/gallery"><button className="nb-button">GALLERY</button></Link>
                     <button className="nb-button">VOTE</button>
                     <button
                         className="nb-button nb-button-primary"
