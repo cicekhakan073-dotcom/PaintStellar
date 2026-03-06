@@ -26,7 +26,8 @@ function formatXLM(stroops: bigint) {
 
 export default function WinnersPanel({ getWinners, publicKey }: Props) {
     // Activity Tab State
-    const [winners, setWinners] = useState<Winner[]>([]);
+    // We attach a local timestamp to winners so we can show a live timeline.
+    const [winners, setWinners] = useState<(Winner & { localObservedAt: number })[]>([]);
     const [loading, setLoading] = useState(true);
 
     // Chat Tab State
@@ -39,7 +40,19 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
     const fetchWinners = useCallback(() => {
         // Only fetch if activity tab is active, or we just want to run in background
         getWinners().then((w) => {
-            setWinners(w);
+            setWinners((prev) => {
+                // Merge new winners with old ones to preserve local timestamps
+                const newWinners = [...w];
+                return newWinners.map((nw, i) => {
+                    // Quick heuristic: If address and amount match an existing recent item, keep its timestamp
+                    // Otherwise, assign Date.now()
+                    const existing = prev[i];
+                    if (existing && existing.address === nw.address && existing.amount === nw.amount) {
+                        return { ...nw, localObservedAt: existing.localObservedAt };
+                    }
+                    return { ...nw, localObservedAt: Date.now() };
+                });
+            });
             setLoading(false);
         }).catch(err => {
             console.error(err);
@@ -52,6 +65,20 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
         const interval = setInterval(fetchWinners, 15000);
         return () => clearInterval(interval);
     }, [fetchWinners]);
+
+    // Live Timeline ticker for the "Activity" tab
+    const [tick, setTick] = useState(0);
+    useEffect(() => {
+        const t = setInterval(() => setTick(n => n + 1), 1000);
+        return () => clearInterval(t);
+    }, []);
+
+    const getTimelineString = (timestamp: number) => {
+        const diffSecs = Math.floor((Date.now() - timestamp) / 1000);
+        if (diffSecs < 60) return `${diffSecs}s ago`;
+        if (diffSecs < 3600) return `${Math.floor(diffSecs / 60)}m ${diffSecs % 60}s ago`;
+        return `${Math.floor(diffSecs / 3600)}h ago`;
+    };
 
     // --- CHAT LOGIC ---
     useEffect(() => {
@@ -195,7 +222,9 @@ export default function WinnersPanel({ getWinners, publicKey }: Props) {
                                             <span style={{ fontWeight: 700, color: 'var(--text-main)' }}> {/* Restored: color: isJackpot ? 'var(--accent-gold)' : 'var(--text-main)' */}
                                                 {shortAddr(w.address)}
                                             </span>
-                                            <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>now</span>
+                                            <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>
+                                                {getTimelineString(w.localObservedAt)}
+                                            </span>
                                         </div>
 
                                         <div style={{ color: 'var(--text-muted)' }}>Painted a pixel on the canvas</div>
