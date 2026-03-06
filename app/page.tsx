@@ -83,6 +83,9 @@ export default function PaintStellarPage() {
     // Space tuşu: basılıyken pan moduna gir
     React.useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
+            // F8: Ignore space down if user is typing in an input or textarea
+            if (e.target && ['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+            
             if (e.code === 'Space' && !e.repeat) {
                 e.preventDefault();
                 isSpaceDown.current = true;
@@ -90,6 +93,9 @@ export default function PaintStellarPage() {
             }
         };
         const onKeyUp = (e: KeyboardEvent) => {
+            // Ignore space up if user is typing in an input or textarea
+            if (e.target && ['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+            
             if (e.code === 'Space') {
                 isSpaceDown.current = false;
                 isPanning.current = false;
